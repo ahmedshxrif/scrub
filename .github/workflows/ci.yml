@@ -1,7 +1,7 @@
 name: tests
 on:
   push:
-    branches: [main]
+    branches: [main, "roadmap/**"]
   pull_request:
 jobs:
   test:
@@ -17,16 +17,40 @@ jobs:
       - run: python -m unittest discover -s tests -v
       - run: pip install . && echo "mail sara@example.com" | scrub
 
-  # A pull request from the roadmap routine merges by itself once every test has passed.
-  merge:
+  # A branch from the roadmap routine lands on main by itself once every test has passed.
+  land:
     needs: test
-    if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'roadmap/') && github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name == 'push' && startsWith(github.ref_name, 'roadmap/')
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      pull-requests: write
+      issues: write
     steps:
-      - run: gh pr merge --rebase --delete-branch "$PR"
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check the commits, then move main forward
+        env:
+          OWNER_EMAIL: 131489125+ahmedshxrif@users.noreply.github.com
+        run: |
+          git fetch origin main
+          # Only ever a fast-forward: main never loses or rewrites a commit.
+          git merge-base --is-ancestor origin/main "$GITHUB_SHA"
+          # Every new commit is the owner's.
+          others="$(git log "origin/main..$GITHUB_SHA" --format=%ae | grep -vxF "$OWNER_EMAIL" || true)"
+          if [ -n "$others" ]; then echo "commit by someone else: $others"; exit 1; fi
+          # Commit messages and added lines carry no tool credit.
+          credit='co-authored-by|generated (with|by)|claude code|noreply@anthropic'
+          if git log "origin/main..$GITHUB_SHA" --format=%B | grep -qiE "$credit"; then echo "tool credit in a commit message"; exit 1; fi
+          if git diff origin/main "$GITHUB_SHA" | grep '^+' | grep -qiE "$credit"; then echo "tool credit in the change"; exit 1; fi
+          # The workflow files are not the routine's to change.
+          if [ -n "$(git diff --name-only origin/main "$GITHUB_SHA" -- .github)" ]; then echo "workflow files changed"; exit 1; fi
+          git push origin "$GITHUB_SHA:refs/heads/main"
+          git push origin --delete "$GITHUB_REF_NAME"
+      - name: Close the issue the branch was for
         env:
           GH_TOKEN: ${{ github.token }}
-          PR: ${{ github.event.pull_request.html_url }}
+        run: |
+          n="${GITHUB_REF_NAME#roadmap/}"; n="${n%%-*}"
+          case "$n" in ''|*[!0-9]*) exit 0 ;; esac
+          gh issue close "$n" --repo "$GITHUB_REPOSITORY" --reason completed
