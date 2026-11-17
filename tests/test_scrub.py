@@ -45,6 +45,12 @@ class Finds(unittest.TestCase):
         self.assertEqual(redact(f"Mail {many_labels} now").text, "Mail [EMAIL] now")
         self.assertEqual(redact("Mail ...sara@example.com.").text, "Mail [EMAIL].")
 
+    def test_email_running_into_punctuation_is_still_removed(self):
+        self.assertEqual(redact("x@example.com...and more").text, "[EMAIL]...and more")
+        self.assertEqual(redact("x@example.com..y").text, "[EMAIL]..y")
+        self.assertEqual(redact("Is it x@example.com?").text, "Is it [EMAIL]?")
+        self.assertEqual(redact("(x@example.com-)").text, "([EMAIL]-)")
+
     def test_things_with_an_at_sign_that_are_not_emails(self):
         for text in ["meet @ 5pm", "@handle said hi", "user@localhost", "a @ b.com", "@", "x@.com"]:
             self.assertNotIn("email", kinds(text), text)

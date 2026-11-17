@@ -94,7 +94,7 @@ print(result.counts())   # {'email': 1, 'phone': 1}
 ## Tests
 
 ```bash
-python -m unittest discover -s tests   # 25 tests
+python -m unittest discover -s tests   # 26 tests
 ```
 
 They cover each kind, the check digits, Arabic-script digits, and a list of things that must be left alone: prices, times, dates, measurements, model codes and order numbers.

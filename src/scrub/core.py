@@ -94,7 +94,9 @@ def _emails(text: str) -> list[tuple[int, int]]:
         end = at + 1
         while end < len(text) and text[end] in _DOMAIN:
             end += 1
-        domain = text[at + 1:end].rstrip(".-")
+        # An address often runs straight into punctuation ("x@example.com...and"). Keep the part
+        # before the first doubled dot, so the real address is still removed.
+        domain = text[at + 1:end].split("..", 1)[0].rstrip(".-")
         end = at + 1 + len(domain)
         labels = domain.split(".")
         if start < at and len(labels) >= 2 and all(labels):
