@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scrub-pii"
+version = "0.1.0"
+description = "Remove personal details from text before it is stored or sent to an AI model. Knows Gulf formats."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Ahmed Farahat" }]
+dependencies = []
+
+[project.scripts]
+scrub = "scrub.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
