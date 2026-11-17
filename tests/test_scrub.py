@@ -83,6 +83,13 @@ class LeavesAlone(unittest.TestCase):
     def test_empty_text(self):
         self.assertEqual(redact("").text, "")
 
+    def test_hostile_input_stays_fast(self):
+        import time
+        started = time.perf_counter()
+        for text in ["a" * 200_000, "1" * 200_000, "+" * 100_000, "a." * 100_000 + "@", ("0 " * 50_000)]:
+            redact(text)
+        self.assertLess(time.perf_counter() - started, 5)
+
 
 class Options(unittest.TestCase):
     def test_only_some_kinds(self):
