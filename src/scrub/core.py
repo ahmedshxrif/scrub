@@ -73,9 +73,37 @@ def _ip_ok(value: str) -> bool:
     return all(part.isdigit() and int(part) <= 255 and (part == "0" or not part.startswith("0")) for part in value.split("."))
 
 
-# Every part has a length limit and the match cannot start in the middle of a longer run, so a
-# hostile input such as a megabyte of "a" cannot make the search slow.
-_EMAIL = re.compile(r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}")
+_LOCAL = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._%+-")
+_DOMAIN = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-")
+
+
+def _emails(text: str) -> list[tuple[int, int]]:
+    """Find email addresses by starting at each @ and growing outward.
+
+    This reads every character at most a few times, so it stays fast on any input, and it takes
+    the whole address however long it is. A pattern with length limits would be just as fast but
+    would leave an unusually long address untouched, which is the one thing a redactor must not do.
+    """
+    spans: list[tuple[int, int]] = []
+    done = 0
+    at = text.find("@")
+    while at != -1:
+        start = at
+        while start > done and text[start - 1] in _LOCAL:
+            start -= 1
+        end = at + 1
+        while end < len(text) and text[end] in _DOMAIN:
+            end += 1
+        domain = text[at + 1:end].rstrip(".-")
+        end = at + 1 + len(domain)
+        labels = domain.split(".")
+        if start < at and len(labels) >= 2 and all(labels):
+            spans.append((start, end))
+            done = end
+        at = text.find("@", max(at + 1, done))
+    return spans
+
+
 _IBAN = re.compile(r"\b[A-Za-z]{2}\d{2}(?: ?[A-Za-z0-9]{4}){2,7}(?: ?[A-Za-z0-9]{1,4})?\b")
 _EMIRATES_ID = re.compile(r"(?<!\d)784[- ]?\d{4}[- ]?\d{7}[- ]?\d(?!\d)")
 _CARD = re.compile(r"(?<![\d-])(?:\d[ -]?){12,18}\d(?![\d-])")
@@ -99,8 +127,8 @@ def _find(kind: str, text: str) -> list[Finding]:
         found.append(Finding(kind, match.start(group), match.end(group), match.group(group)))
 
     if kind == "email":
-        for match in _EMAIL.finditer(text):
-            add(match)
+        for start, end in _emails(text):
+            found.append(Finding(kind, start, end, text[start:end]))
     elif kind == "iban":
         for match in _IBAN.finditer(text):
             if iban_ok(match.group()):

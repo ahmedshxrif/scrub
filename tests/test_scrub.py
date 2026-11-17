@@ -36,6 +36,19 @@ class Finds(unittest.TestCase):
     def test_email(self):
         self.assertEqual(redact("Write to sara.ali@example.com today.").text, "Write to [EMAIL] today.")
 
+    def test_email_of_any_length_is_removed_whole(self):
+        long_local = "a" * 300 + "@example.com"
+        self.assertEqual(redact(f"Mail {long_local} now").text, "Mail [EMAIL] now")
+        long_label = "sara@" + "b" * 200 + ".example.com"
+        self.assertEqual(redact(f"Mail {long_label} now").text, "Mail [EMAIL] now")
+        many_labels = "sara@" + ".".join(["mail"] * 20) + ".com"
+        self.assertEqual(redact(f"Mail {many_labels} now").text, "Mail [EMAIL] now")
+        self.assertEqual(redact("Mail ...sara@example.com.").text, "Mail [EMAIL].")
+
+    def test_things_with_an_at_sign_that_are_not_emails(self):
+        for text in ["meet @ 5pm", "@handle said hi", "user@localhost", "a @ b.com", "@", "x@.com"]:
+            self.assertNotIn("email", kinds(text), text)
+
     def test_phones_in_the_usual_gulf_shapes(self):
         for phone in ["+971 50 123 4567", "+971501234567", "00971 4 123 4567", "050 123 4567", "04 123 4567", "+966 55 123 4567", "+44 20 7946 0958"]:
             self.assertEqual(kinds(f"Call {phone} please"), ["phone"], phone)
