@@ -66,9 +66,26 @@ scrub call.txt --names people.txt
 scrub notes.txt                      # cleaned text to the screen
 cat notes.txt | scrub > clean.txt    # in a pipe
 scrub notes.txt --only email,phone   # just these kinds
+scrub notes.txt --mask               # keep a little of each value instead of a label
 scrub notes.txt --json               # the text plus where each thing was found
 scrub notes.txt --check              # prints nothing; exits 1 if anything was found
 ```
+
+### Masking
+
+Sometimes you need the end of a value, for example to tell two cards apart. `--mask` (or `redact(text, mask=True)` in Python) keeps a little of each kind and hides the rest:
+
+| Kind | Example | Masked |
+|---|---|---|
+| `card` | `4111 1111 1111 1111` | `**** **** **** 1111` |
+| `phone` | `050 123 4567` | `*** *** *567` |
+| `email` | `omar@example.com` | `***@example.com` |
+| `emirates_id` | `784-1990-1234567-6` | `***-****-****567-6` |
+| `iban` | `AE07 0331 2345 6789 0123 456` | `**** **** **** **** ***3 456` |
+| `ip` | `192.168.1.42` | `*.*.*.42` |
+| `name` | `Omar Haddad` | `O. H.` |
+
+Spaces, dashes and the `+` stay where they were. The email name is always three stars, so its length is not given away. The findings still report the original positions.
 
 `--check` is for automation: put it in front of anything that should never receive personal data and let it fail the step.
 
@@ -94,7 +111,7 @@ print(result.counts())   # {'email': 1, 'phone': 1}
 ## Tests
 
 ```bash
-python -m unittest discover -s tests   # 26 tests
+python -m unittest discover -s tests   # 36 tests
 ```
 
 They cover each kind, the check digits, Arabic-script digits, and a list of things that must be left alone: prices, times, dates, measurements, model codes and order numbers.

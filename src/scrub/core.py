@@ -122,6 +122,54 @@ _NAME = re.compile(
 _NOT_NAMES = {"Sorry", "Looking", "Here", "Fine", "Good", "Not", "Just", "Going", "Calling", "Interested", "Sure", "Happy", "The", "A", "An", "My", "Your", "Our", "It", "That", "This"}
 
 
+def _hide_digits(value: str, keep: int) -> str:
+    """Turn every digit into * except the last `keep`. Spaces, dashes and the + stay where they are."""
+    total = sum(ch.isdigit() for ch in value)
+    seen = 0
+    out = []
+    for ch in value:
+        if ch.isdigit():
+            seen += 1
+            out.append(ch if seen > total - keep else "*")
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def _hide_characters(value: str, keep: int) -> str:
+    """Like _hide_digits, for values that mix letters and digits (an IBAN)."""
+    total = sum(ch.isalnum() for ch in value)
+    seen = 0
+    out = []
+    for ch in value:
+        if ch.isalnum():
+            seen += 1
+            out.append(ch if seen > total - keep else "*")
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def mask_value(kind: str, value: str) -> str:
+    """The masked form of one finding: enough left to tell two apart, not enough to use it.
+
+    The email name is always three stars, so its length is not given away either.
+    """
+    if kind == "email":
+        return "***@" + value.rsplit("@", 1)[1]
+    if kind == "card" or kind == "emirates_id":
+        return _hide_digits(value, 4)
+    if kind == "phone":
+        return _hide_digits(value, 3)
+    if kind == "iban":
+        return _hide_characters(value, 4)
+    if kind == "ip":
+        return "*.*.*." + value.rsplit(".", 1)[1]
+    if kind == "name":
+        return " ".join(part[0] + "." for part in re.split(r"[ -]+", value) if part)
+    raise ValueError(f"unknown kind {kind!r}. Choose from: {', '.join(KINDS)}")
+
+
 def _find(kind: str, text: str) -> list[Finding]:
     found: list[Finding] = []
 
@@ -160,12 +208,13 @@ def _find(kind: str, text: str) -> list[Finding]:
     return found
 
 
-def redact(text: str, kinds: tuple[str, ...] | list[str] | None = None, names: list[str] | None = None) -> Result:
+def redact(text: str, kinds: tuple[str, ...] | list[str] | None = None, names: list[str] | None = None, mask: bool = False) -> Result:
     """Replace personal details in `text` with labels.
 
     `kinds` limits what is looked for (default: everything in KINDS).
     `names` is an optional list of names to remove wherever they appear, for when you already
     know who is in the conversation.
+    `mask` keeps a little of each value (see mask_value) instead of replacing it with a label.
     """
     wanted = tuple(kinds) if kinds else KINDS
     unknown = [kind for kind in wanted if kind not in KINDS]
@@ -197,8 +246,9 @@ def redact(text: str, kinds: tuple[str, ...] | list[str] | None = None, names: l
     findings: list[Finding] = []
     for finding in kept:
         pieces.append(text[cursor:finding.start])
-        pieces.append(f"[{finding.kind.upper()}]")
-        findings.append(Finding(finding.kind, finding.start, finding.end, text[finding.start:finding.end]))
+        original = text[finding.start:finding.end]
+        pieces.append(mask_value(finding.kind, original) if mask else f"[{finding.kind.upper()}]")
+        findings.append(Finding(finding.kind, finding.start, finding.end, original))
         cursor = finding.end
     pieces.append(text[cursor:])
     return Result("".join(pieces), findings)

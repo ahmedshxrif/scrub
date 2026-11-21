@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from scrub import redact  # noqa: E402
+from scrub import KINDS, redact  # noqa: E402
 from scrub.core import iban_ok, luhn_ok  # noqa: E402
 
 CARD = "4111 1111 1111 1111"          # a well-known test card number
@@ -129,6 +129,51 @@ class Options(unittest.TestCase):
         self.assertEqual(result.counts(), {"email": 2, "phone": 1})
 
 
+class Masks(unittest.TestCase):
+    def masked(self, text, **options):
+        return redact(text, mask=True, **options).text
+
+    def test_card_keeps_last_four(self):
+        self.assertEqual(self.masked(f"Card {CARD}."), "Card **** **** **** 1111.")
+        self.assertEqual(self.masked("Card 4111-1111-1111-1111"), "Card ****-****-****-1111")
+
+    def test_phone_keeps_last_three(self):
+        self.assertEqual(self.masked("Call +971 50 123 4567"), "Call +*** ** *** *567")
+        self.assertEqual(self.masked("Call 050 123 4567"), "Call *** *** *567")
+
+    def test_email_keeps_only_the_domain(self):
+        self.assertEqual(self.masked("Mail omar.haddad@example.com now"), "Mail ***@example.com now")
+
+    def test_emirates_id_iban_ip_and_name(self):
+        self.assertEqual(self.masked(f"ID {EMIRATES_ID}"), "ID ***-****-****567-6")
+        self.assertEqual(self.masked(f"IBAN {IBAN}"), "IBAN **** **** **** **** ***3 456")
+        self.assertEqual(self.masked("Host 192.168.1.42"), "Host *.*.*.42")
+        self.assertEqual(self.masked("My name is Omar Haddad."), "My name is O. H..")
+
+    def test_arabic_digits_are_masked_too(self):
+        self.assertEqual(self.masked("Call ٠٥٠ ١٢٣ ٤٥٦٧"), "Call *** *** *٥٦٧")
+
+    def test_every_kind_has_a_masked_form(self):
+        from scrub.core import mask_value
+        samples = {"email": "a@b.co", "card": CARD, "emirates_id": EMIRATES_ID, "iban": IBAN,
+                   "phone": "050 123 4567", "ip": "10.0.0.1", "name": "Omar"}
+        self.assertEqual(set(samples), set(KINDS))
+        for kind, value in samples.items():
+            self.assertNotEqual(mask_value(kind, value), value)
+
+    def test_the_masked_text_never_holds_the_hidden_digits(self):
+        out = self.masked(f"{CARD} {EMIRATES_ID}")
+        self.assertNotIn("4111", out.replace("1111", ""))
+        self.assertNotIn("1990", out)
+
+    def test_findings_still_report_the_original_positions(self):
+        result = redact(f"Card {CARD}.", mask=True)
+        self.assertEqual((result.findings[0].start, result.findings[0].end), (5, 24))
+
+    def test_text_without_findings_is_unchanged(self):
+        self.assertEqual(self.masked("It costs 2,199 dirhams."), "It costs 2,199 dirhams.")
+
+
 class CommandLine(unittest.TestCase):
     def run_cli(self, *args, text=""):
         return subprocess.run([sys.executable, "-m", "scrub.cli", *args], input=text, capture_output=True, text=True, env={"PYTHONPATH": str(ROOT / "src")})
@@ -137,6 +182,10 @@ class CommandLine(unittest.TestCase):
         result = self.run_cli(text="Mail sara@example.com\n")
         self.assertEqual(result.stdout, "Mail [EMAIL]\n")
         self.assertIn("1 email", result.stderr)
+
+    def test_mask_flag(self):
+        result = self.run_cli("--mask", text=f"Card {CARD}, mail sara@example.com\n")
+        self.assertEqual(result.stdout, "Card **** **** **** 1111, mail ***@example.com\n")
 
     def test_json_never_repeats_what_was_removed(self):
         result = self.run_cli("--json", text="Mail sara@example.com")
